@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"github.com/scnewma/sgen/internal/encoding"
 	"github.com/scnewma/sgen/internal/sgen"
 	"github.com/scnewma/sgen/internal/sgen/supply"
+	"github.com/scnewma/sgen/internal/tplcache"
 )
 
 func Execute() int {
@@ -96,7 +98,8 @@ func execute() error {
 }
 
 type SGen struct {
-	Sources []sgen.Source
+	Sources  []sgen.Source
+	TplCache *tplcache.Cache
 }
 
 type SGenOpts struct {
@@ -136,22 +139,40 @@ func NewSGen(opts SGenOpts) (*SGen, error) {
 		})
 	}
 	return &SGen{
-		Sources: srcs,
+		Sources:  srcs,
+		TplCache: tplcache.New(),
 	}, nil
 }
 
 func (s *SGen) Generate(w io.Writer, renderer sgen.Renderer) error {
 	ctx := context.Background()
 	for _, src := range s.Sources {
+		rndr := renderer
+		if rndr == nil {
+			rndr = src.DefaultRenderer
+		}
+
+		if cache, err := s.TplCache.Get(src.Name, rndr.ID()); err == nil && cache != nil {
+			// if an error happens copying the cached date into the writer we
+			// can't just fallback to loading the underlying source and using
+			// that data since we may have partially written the cached data,
+			// which would create corrupted output on the writer
+			if _, err := io.Copy(w, bytes.NewBuffer(cache)); err != nil {
+				return err
+			}
+			continue
+		}
+
 		data, err := src.Load(ctx)
 		if err != nil {
 			return fmt.Errorf("syncing %s: %w", src.Name, err)
 		}
 
-		rndr := renderer
-		if rndr == nil {
-			rndr = src.DefaultRenderer
+		cacheW, err := s.TplCache.Open(src.Name, rndr.ID())
+		if err != nil {
+			return err
 		}
+		defer cacheW.Close()
 
 		for _, datum := range data {
 			line, err := rndr.Render(datum)
@@ -164,7 +185,12 @@ func (s *SGen) Generate(w io.Writer, renderer sgen.Renderer) error {
 				return fmt.Errorf("render failure with data %q: %w", dataStr, err)
 			}
 
-			fmt.Fprintln(w, line)
+			if _, err := fmt.Fprintln(w, line); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintln(cacheW, line); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -173,7 +199,12 @@ func (s *SGen) Generate(w io.Writer, renderer sgen.Renderer) error {
 
 func (s *SGen) Sync() error {
 	ctx := context.Background()
+
 	for _, src := range s.Sources {
+		if err := s.TplCache.Clear(src.Name); err != nil {
+			return err
+		}
+
 		if err := src.Sync(ctx); err != nil {
 			return err
 		}

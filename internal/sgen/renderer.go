@@ -10,10 +10,15 @@ import (
 )
 
 type Renderer interface {
+	ID() string
 	Render(map[string]string) (string, error)
 }
 
 type JSONRenderer struct{}
+
+func (r *JSONRenderer) ID() string {
+	return "<JSON>"
+}
 
 func (r *JSONRenderer) Render(data map[string]string) (string, error) {
 	buf, err := json.Marshal(data)
@@ -37,6 +42,10 @@ func NewGoTemplateRenderer(tmpl string) (*GoTemplateRenderer, error) {
 		tmplStr: tmpl,
 		tmpl:    t,
 	}, nil
+}
+
+func (r *GoTemplateRenderer) ID() string {
+	return r.tmplStr
 }
 
 func (r *GoTemplateRenderer) Render(data map[string]string) (string, error) {
