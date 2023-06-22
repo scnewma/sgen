@@ -1,16 +1,18 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/scnewma/sgen/internal/encoding"
 	"github.com/scnewma/sgen/internal/sgen"
 	"github.com/scnewma/sgen/internal/sgen/supply"
-	"github.com/spf13/cobra"
 )
 
 func Execute() int {
@@ -81,7 +83,9 @@ func execute() error {
 				}
 			}
 
-			return app.Generate(os.Stdout, renderer)
+			bw := bufio.NewWriter(os.Stdout)
+			defer bw.Flush()
+			return app.Generate(bw, renderer)
 		},
 	}
 
