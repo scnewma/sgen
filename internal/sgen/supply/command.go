@@ -3,6 +3,7 @@ package supply
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -35,6 +36,11 @@ func (s *Command) Supply(ctx context.Context) ([]map[string]string, error) {
 	cmd := exec.CommandContext(ctx, s.argv[0], s.argv[1:]...)
 	out, err := cmd.Output()
 	if err != nil {
+		var exitError *exec.ExitError
+		if errors.As(err, &exitError) {
+			cmdStr := strings.Join(s.argv, " ")
+			return nil, fmt.Errorf("running command %q: stderr: %s", cmdStr, string(exitError.Stderr))
+		}
 		return nil, err
 	}
 	var data []map[string]string
