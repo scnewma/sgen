@@ -1,8 +1,7 @@
 {
   "packages": [
     "go@latest",
-    "golangci-lint@latest",
-    "cue@latest"
+    "golangci-lint@latest"
   ],
   "shell": {},
   "nixpkgs": {

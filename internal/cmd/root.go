@@ -4,21 +4,38 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/spf13/cobra"
 
 	"github.com/scnewma/sgen/internal/encoding"
+	"github.com/scnewma/sgen/internal/hclconfig"
 	"github.com/scnewma/sgen/internal/sgen"
 	"github.com/scnewma/sgen/internal/sgen/supply"
 	"github.com/scnewma/sgen/internal/tplcache"
 )
 
+type ExitCodeError struct {
+	ExitCode int
+}
+
+func (e ExitCodeError) Error() string {
+	return fmt.Sprintf("exit code %d", e.ExitCode)
+}
+
 func Execute() int {
 	if err := execute(); err != nil {
+		var exitCodeErr ExitCodeError
+		if errors.As(err, &exitCodeErr) {
+			return exitCodeErr.ExitCode
+		}
+
 		fmt.Printf("error: %v\n", err)
 		return 1
 	}
@@ -26,8 +43,13 @@ func Execute() int {
 }
 
 func execute() error {
-	config, err := LoadConfig()
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
+		return fmt.Errorf("could not find HOME: %w", err)
+	}
+	path := filepath.Join(homeDir, ".config", "sgen", "config.hcl")
+	config, diags := hclconfig.Parse(path)
+	if err := writeDiags(diags, config.Files); err != nil {
 		return err
 	}
 
@@ -49,7 +71,7 @@ func execute() error {
 			if sync && len(args) == 0 {
 				var sources []string
 				for _, cs := range config.Sources {
-					sources = append(sources, cs.Name)
+					sources = append(sources, cs.GetName())
 				}
 
 				app, err := NewSGen(SGenOpts{
@@ -97,13 +119,28 @@ func execute() error {
 	return root.Execute()
 }
 
+func writeDiags(diags hcl.Diagnostics, files map[string]*hcl.File) error {
+	var b bytes.Buffer
+	w := hcl.NewDiagnosticTextWriter(&b, files, 80, true)
+	if err := w.WriteDiagnostics(diags); err != nil {
+		return fmt.Errorf("writing diagnostics: %w", err)
+	}
+	if b.Len() != 0 {
+		fmt.Print(b.String())
+		if diags.HasErrors() {
+			return ExitCodeError{ExitCode: 1}
+		}
+	}
+	return nil
+}
+
 type SGen struct {
 	Sources  []sgen.Source
 	TplCache *tplcache.Cache
 }
 
 type SGenOpts struct {
-	Config  *Config
+	Config  *hclconfig.Config
 	Sources []string
 }
 
@@ -112,14 +149,14 @@ func NewSGen(opts SGenOpts) (*SGen, error) {
 	for _, srcName := range opts.Sources {
 		var err error
 
-		cs := opts.Config.GetSource(srcName)
-		if cs == nil {
+		cs, found := opts.Config.Sources[srcName]
+		if !found {
 			return nil, fmt.Errorf("source %q not configured", srcName)
 		}
 
 		var rndr sgen.Renderer
-		if cs.DefaultTemplate != "" {
-			rndr, err = sgen.NewGoTemplateRenderer(cs.DefaultTemplate)
+		if cs.GetDefaultTemplate() != "" {
+			rndr, err = sgen.NewGoTemplateRenderer(cs.GetDefaultTemplate())
 			if err != nil {
 				return nil, err
 			}
@@ -127,13 +164,13 @@ func NewSGen(opts SGenOpts) (*SGen, error) {
 			rndr = &sgen.JSONRenderer{}
 		}
 
-		supplier, err := ToSupplier(cs)
+		supplier, err := cs.ToSupplier()
 		if err != nil {
 			return nil, err
 		}
 
 		srcs = append(srcs, sgen.Source{
-			Name:            cs.Name,
+			Name:            cs.GetName(),
 			DefaultRenderer: rndr,
 			Supplier:        supplier,
 		})
