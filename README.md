@@ -13,9 +13,82 @@ go install github.com/scnewma/sgen@latest
 
 ## Configuration
 
-`sgen` requires a configuration file to exist in `$HOME/.config/sgen/config.yaml`.
+`sgen` requires a configuration file to exist in `$HOME/.config/sgen/config.hcl`.
 
-See [schema.cue](./schema.cue) for how to setup the configuration file.
+### Source Blocks
+
+`sgen` requires you to configure `source` blocks in order to know how to load
+data to generate output.
+
+#### Syntax
+
+```
+source "command" "gh" {
+    default_template = "{{.nameWithOwner}}"
+    command = "gh repo list --json nameWithOwner"
+}
+```
+
+A `source` block requires a type (i.e. `"command"`) with a name (i.e. `"gh"`).
+The name of the source is used as input on the command line in order to select
+which sources should be consulted in order to generate output. All sources must
+have unique names.
+
+The data format of every source MUST be an array of objects, i.e. `list(map)`.
+Unless otherwise specified by the specific source type, this is expected to be
+in JSON format. To be super explicit, this is valid output of a source:
+
+```
+[
+    { "name": "Bob" },
+    { "name": "Alice" }
+]
+```
+
+#### Source Types
+
+##### Common Properties
+
+All sources define one common (but optional) property named `default_template`.
+When `--template` is not specified on the command line this template will be
+used. The template is in Go Template syntax.
+
+##### source "command"
+
+Execute an external command in order to load data. The command's stdout will be
+used as the data source.
+
+Example:
+
+```
+source "command" "gh" {
+    command = "gh repo list --json nameWithOwner"
+}
+```
+
+Properties:
+
+* `command` - The full command to execute. By default the command is executed
+  directly, but you can access shell features by prefixing the command with
+  `!` (i.e. `!gh repo list --json name | jq '.name'`)
+
+##### source "file"
+
+The `file` source loads data from an existing file on disk. Currently `json`
+and `yaml` formats are automatically detected (via file ext).
+
+Example:
+
+```
+source "file" "gh" {
+    path = "/data.json"
+}
+```
+
+Properties:
+
+* `path` - Full path to the file on disk to load. Must end in one of the
+  following extensions: `.json`, `.yaml`, `.yml`.
 
 ## How I use it
 
@@ -36,13 +109,10 @@ I drive these types of interactions through shell functions/aliases, and [alfred
 Here is a real configuration and shell functions to utilize the configuration. Requires the [gh cli](https://github.com/cli/cli).
 
 ```
-sources:
-  - name: gh
-    default_template: "{{ .nameWithOwner }}"
-    type: command
-    command: |
-      gh repo list hashicorp --limit 5000 --json nameWithOwner,url,sshUrl
-    
+source "command" "gh" {
+  default_template = "{{.nameWithOwner}}"
+  command = "gh repo list hashicorp --limit 5000 --json nameWithOwner,url,sshUrl"
+}
 ```
 
 ```
