@@ -144,7 +144,7 @@ func NewSGen(opts SGenOpts) (*SGen, error) {
 	}, nil
 }
 
-func (s *SGen) Generate(w io.Writer, renderer sgen.Renderer) error {
+func (s *SGen) Generate(out io.Writer, renderer sgen.Renderer) error {
 	ctx := context.Background()
 	for _, src := range s.Sources {
 		rndr := renderer
@@ -157,7 +157,7 @@ func (s *SGen) Generate(w io.Writer, renderer sgen.Renderer) error {
 			// can't just fallback to loading the underlying source and using
 			// that data since we may have partially written the cached data,
 			// which would create corrupted output on the writer
-			if _, err := io.Copy(w, bytes.NewBuffer(cache)); err != nil {
+			if _, err := io.Copy(out, bytes.NewBuffer(cache)); err != nil {
 				return err
 			}
 			continue
@@ -173,6 +173,7 @@ func (s *SGen) Generate(w io.Writer, renderer sgen.Renderer) error {
 			return err
 		}
 		defer cacheW.Close()
+		w := io.MultiWriter(out, cacheW)
 
 		for _, datum := range data {
 			line, err := rndr.Render(datum)
@@ -186,9 +187,6 @@ func (s *SGen) Generate(w io.Writer, renderer sgen.Renderer) error {
 			}
 
 			if _, err := fmt.Fprintln(w, line); err != nil {
-				return err
-			}
-			if _, err := fmt.Fprintln(cacheW, line); err != nil {
 				return err
 			}
 		}
