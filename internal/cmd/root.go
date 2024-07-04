@@ -7,8 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
@@ -43,11 +43,10 @@ func Execute() int {
 }
 
 func execute() error {
-	homeDir, err := os.UserHomeDir()
+	path, err := ConfigFile()
 	if err != nil {
-		return fmt.Errorf("could not find HOME: %w", err)
+		return err
 	}
-	path := filepath.Join(homeDir, ".config", "sgen", "config.hcl")
 	config, diags := hclconfig.Parse(path)
 	if err := writeDiags(diags, config.Files); err != nil {
 		return err
@@ -248,7 +247,9 @@ func (s *SGen) Generate(out io.Writer, opts ...GenerateOption) error {
 		}
 
 		data, err := src.Load(ctx)
-		if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("generation requested for source without cached data, re-run with --sync to load data")
+		} else if err != nil {
 			return fmt.Errorf("syncing %s: %w", src.Name, err)
 		}
 

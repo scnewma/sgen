@@ -9,6 +9,10 @@ import (
 )
 
 func CacheDir() (string, error) {
+	if dir := os.Getenv("SGEN_CACHE_DIR"); dir != "" {
+		return dir, nil
+	}
+
 	dir, err := os.UserCacheDir()
 	if err != nil {
 		return "", err

@@ -9,6 +9,8 @@ require (
 	github.com/google/go-cmp v0.5.9
 	github.com/hashicorp/hcl/v2 v2.17.0
 	github.com/spf13/cobra v1.7.0
+	github.com/zclconf/go-cty v1.13.0
+	gotest.tools/v3 v3.5.1
 )
 
 require (
@@ -26,7 +28,6 @@ require (
 	github.com/shopspring/decimal v1.2.0 // indirect
 	github.com/spf13/cast v1.3.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	github.com/zclconf/go-cty v1.13.0 // indirect
 	golang.org/x/crypto v0.3.0 // indirect
 	golang.org/x/text v0.4.0 // indirect
 )

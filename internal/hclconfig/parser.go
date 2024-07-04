@@ -2,12 +2,14 @@ package hclconfig
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/hashicorp/hcl/v2/hclparse"
 	"github.com/scnewma/sgen/internal/sgen"
 	"github.com/scnewma/sgen/internal/sgen/supply"
+	"github.com/zclconf/go-cty/cty"
 )
 
 const DefaultTemplateName = "default"
@@ -79,6 +81,15 @@ func Parse(filename string) (*Config, hcl.Diagnostics) {
 		return config, diags
 	}
 
+	context := &hcl.EvalContext{
+		Variables: map[string]cty.Value{
+			"sgen": cty.ObjectVal(map[string]cty.Value{
+				// directory where the filename is located
+				"directory": cty.StringVal(filepath.Dir(filename)),
+			}),
+		},
+	}
+
 	config.Files[filename] = f
 
 	content, moreDiags := f.Body.Content(configSchema)
@@ -90,14 +101,14 @@ func Parse(filename string) (*Config, hcl.Diagnostics) {
 			name := block.Labels[1]
 			switch typ {
 			case "file":
-				source, moreDiags := decodeFileSource(name, block)
+				source, moreDiags := decodeFileSource(name, context, block)
 				diags = append(diags, moreDiags...)
 				if moreDiags.HasErrors() {
 					continue
 				}
 				config.Sources[source.Name] = source
 			case "command":
-				source, moreDiags := decodeCommandSource(name, block)
+				source, moreDiags := decodeCommandSource(name, context, block)
 				diags = append(diags, moreDiags...)
 				if moreDiags.HasErrors() {
 					continue
@@ -114,7 +125,7 @@ func Parse(filename string) (*Config, hcl.Diagnostics) {
 	return config, diags
 }
 
-func decodeFileSource(name string, block *hcl.Block) (*FileSourceBlock, hcl.Diagnostics) {
+func decodeFileSource(name string, context *hcl.EvalContext, block *hcl.Block) (*FileSourceBlock, hcl.Diagnostics) {
 	source := &FileSourceBlock{
 		SourceBlock: SourceBlock{Name: name},
 	}
@@ -125,7 +136,7 @@ func decodeFileSource(name string, block *hcl.Block) (*FileSourceBlock, hcl.Diag
 			Value string `hcl:"value"`
 		} `hcl:"template,block"`
 	}
-	diags := gohcl.DecodeBody(block.Body, nil, &b)
+	diags := gohcl.DecodeBody(block.Body, context, &b)
 	if diags.HasErrors() {
 		return source, diags
 	}
@@ -137,7 +148,7 @@ func decodeFileSource(name string, block *hcl.Block) (*FileSourceBlock, hcl.Diag
 	return source, diags
 }
 
-func decodeCommandSource(name string, block *hcl.Block) (*CommandSourceBlock, hcl.Diagnostics) {
+func decodeCommandSource(name string, context *hcl.EvalContext, block *hcl.Block) (*CommandSourceBlock, hcl.Diagnostics) {
 	source := &CommandSourceBlock{
 		SourceBlock: SourceBlock{Name: name},
 	}
@@ -148,7 +159,7 @@ func decodeCommandSource(name string, block *hcl.Block) (*CommandSourceBlock, hc
 			Value string `hcl:"value"`
 		} `hcl:"template,block"`
 	}
-	diags := gohcl.DecodeBody(block.Body, nil, &b)
+	diags := gohcl.DecodeBody(block.Body, context, &b)
 	if diags.HasErrors() {
 		return source, diags
 	}
