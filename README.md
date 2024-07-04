@@ -24,8 +24,12 @@ data to generate output.
 
 ```
 source "command" "gh" {
-    default_template = "{{.nameWithOwner}}"
     command = "gh repo list --json nameWithOwner"
+
+    template {
+        name = "default"
+        value = "{{.nameWithOwner}}"
+    }
 }
 ```
 
@@ -49,9 +53,20 @@ in JSON format. To be super explicit, this is valid output of a source:
 
 ##### Common Properties
 
-All sources define one common (but optional) property named `default_template`.
-When `--template` is not specified on the command line this template will be
-used. The template is in Go Template syntax.
+All sources can specify a repeatable `template` block. This block allows you to
+define commonly used templates in your configuration file and reference them by
+name on the command line. Specifying a template named `default` will override
+the default output for the source when `--template` is not specified. The
+template is in Go Template syntax.
+
+Example:
+
+```
+template {
+    name = "default"
+    value = "{{.name}}"
+}
+```
 
 ##### source "command"
 
@@ -110,8 +125,12 @@ Here is a real configuration and shell functions to utilize the configuration. R
 
 ```
 source "command" "gh" {
-  default_template = "{{.nameWithOwner}}"
   command = "gh repo list hashicorp --limit 5000 --json nameWithOwner,url,sshUrl"
+
+  template {
+    name = "default"
+    value = "{{.nameWithOwner}}"
+  }
 }
 ```
 

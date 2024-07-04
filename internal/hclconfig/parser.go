@@ -10,6 +10,8 @@ import (
 	"github.com/scnewma/sgen/internal/sgen/supply"
 )
 
+const DefaultTemplateName = "default"
+
 type Config struct {
 	Sources map[string]Source
 	Files   map[string]*hcl.File
@@ -17,21 +19,27 @@ type Config struct {
 
 type Source interface {
 	GetName() string
+	GetNamedTemplate(name string) (string, bool)
 	GetDefaultTemplate() string
 	ToSupplier() (sgen.Supplier, error)
 }
 
 type SourceBlock struct {
-	Name            string
-	DefaultTemplate string
+	Name      string
+	Templates map[string]string
 }
 
 func (b *SourceBlock) GetName() string {
 	return b.Name
 }
 
+func (b *SourceBlock) GetNamedTemplate(name string) (string, bool) {
+	t, ok := b.Templates[name]
+	return t, ok
+}
+
 func (b *SourceBlock) GetDefaultTemplate() string {
-	return b.DefaultTemplate
+	return b.Templates[DefaultTemplateName]
 }
 
 type FileSourceBlock struct {
@@ -112,14 +120,20 @@ func decodeFileSource(name string, block *hcl.Block) (*FileSourceBlock, hcl.Diag
 		SourceBlock: SourceBlock{Name: name},
 	}
 	var b struct {
-		DefaultTemplate string `hcl:"default_template,optional"`
-		Path            string `hcl:"path"`
+		Path      string `hcl:"path"`
+		Templates []struct {
+			Name  string `hcl:"name"`
+			Value string `hcl:"value"`
+		} `hcl:"template,block"`
 	}
 	diags := gohcl.DecodeBody(block.Body, nil, &b)
 	if diags.HasErrors() {
 		return source, diags
 	}
-	source.DefaultTemplate = b.DefaultTemplate
+	source.Templates = make(map[string]string)
+	for _, tpl := range b.Templates {
+		source.Templates[tpl.Name] = tpl.Value
+	}
 	source.Path = b.Path
 	return source, diags
 }
@@ -129,14 +143,20 @@ func decodeCommandSource(name string, block *hcl.Block) (*CommandSourceBlock, hc
 		SourceBlock: SourceBlock{Name: name},
 	}
 	var b struct {
-		DefaultTemplate string `hcl:"default_template,optional"`
-		Command         string `hcl:"command"`
+		Command   string `hcl:"command"`
+		Templates []struct {
+			Name  string `hcl:"name"`
+			Value string `hcl:"value"`
+		} `hcl:"template,block"`
 	}
 	diags := gohcl.DecodeBody(block.Body, nil, &b)
 	if diags.HasErrors() {
 		return source, diags
 	}
 	source.Command = b.Command
-	source.DefaultTemplate = b.DefaultTemplate
+	source.Templates = make(map[string]string)
+	for _, tpl := range b.Templates {
+		source.Templates[tpl.Name] = tpl.Value
+	}
 	return source, diags
 }

@@ -11,29 +11,35 @@ func TestParse(t *testing.T) {
 		Sources: map[string]Source{
 			"gh": &CommandSourceBlock{
 				SourceBlock: SourceBlock{
-					Name:            "gh",
-					DefaultTemplate: "",
+					Name:      "gh",
+					Templates: map[string]string{},
 				},
 				Command: "gh repo list --json nameWithOwner",
 			},
 			"gh_w_template": &CommandSourceBlock{
 				SourceBlock: SourceBlock{
-					Name:            "gh_w_template",
-					DefaultTemplate: "{{.nameWithOwner}}",
+					Name: "gh_w_template",
+					Templates: map[string]string{
+						"default": "{{.nameWithOwner}}",
+						"name":    "{{.name}}",
+					},
 				},
 				Command: "gh repo list --json nameWithOwner",
 			},
 			"static": &FileSourceBlock{
 				SourceBlock: SourceBlock{
-					Name:            "static",
-					DefaultTemplate: "",
+					Name:      "static",
+					Templates: map[string]string{},
 				},
 				Path: "/data.json",
 			},
 			"static_w_template": &FileSourceBlock{
 				SourceBlock: SourceBlock{
-					Name:            "static_w_template",
-					DefaultTemplate: "{{.nameWithOwner}}",
+					Name: "static_w_template",
+					Templates: map[string]string{
+						"default": "{{.nameWithOwner}}",
+						"name":    "{{.name}}",
+					},
 				},
 				Path: "/data.json",
 			},
