@@ -55,15 +55,24 @@ func execute() error {
 
 	// flags
 	var (
-		sync     bool
-		template string
+		sync          bool
+		template      string
+		namedTemplate string
 	)
 
 	root := &cobra.Command{
-		Use: "sgen [SOURCE ...]",
+		Use:           "sgen [SOURCE ...]",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !sync && len(args) == 0 {
 				return cmd.Usage()
+			}
+
+			template = strings.TrimSpace(template)
+			namedTemplate = strings.TrimSpace(namedTemplate)
+			if template != "" && namedTemplate != "" {
+				return fmt.Errorf("--template and --template-name are mutually exclusive")
 			}
 
 			// special case, if the user just specifies -S then we sync all of
@@ -98,23 +107,26 @@ func execute() error {
 				}
 			}
 
-			var renderer sgen.Renderer
-			template = strings.TrimSpace(template)
+			opts := []GenerateOption{}
 			if template != "" {
-				renderer, err = sgen.NewGoTemplateRenderer(template)
+				renderer, err := sgen.NewGoTemplateRenderer(template)
 				if err != nil {
 					return err
 				}
+				opts = append(opts, WithRenderer(renderer))
+			} else if namedTemplate != "" {
+				opts = append(opts, WithNamedRenderer(namedTemplate))
 			}
 
 			bw := bufio.NewWriter(os.Stdout)
 			defer bw.Flush()
-			return app.Generate(bw, renderer)
+			return app.Generate(bw, opts...)
 		},
 	}
 
 	root.Flags().BoolVarP(&sync, "sync", "S", false, "update sources")
 	root.Flags().StringVarP(&template, "template", "t", "", "go template for rendering each source item, see: http://golang.org/pkg/text/template/#pkg-overview")
+	root.Flags().StringVarP(&namedTemplate, "template-name", "n", "", "name of the template defined in config.hcl to use for rendering each source item")
 
 	return root.Execute()
 }
@@ -154,14 +166,15 @@ func NewSGen(opts SGenOpts) (*SGen, error) {
 			return nil, fmt.Errorf("source %q not configured", srcName)
 		}
 
-		var rndr sgen.Renderer
-		if cs.GetDefaultTemplate() != "" {
-			rndr, err = sgen.NewGoTemplateRenderer(cs.GetDefaultTemplate())
+		rndrs := map[string]sgen.Renderer{}
+		for name, tpl := range cs.GetTemplates() {
+			rndrs[name], err = sgen.NewGoTemplateRenderer(tpl)
 			if err != nil {
 				return nil, err
 			}
-		} else {
-			rndr = &sgen.JSONRenderer{}
+		}
+		if _, found := rndrs["default"]; !found {
+			rndrs["default"] = &sgen.JSONRenderer{}
 		}
 
 		supplier, err := cs.ToSupplier()
@@ -170,9 +183,9 @@ func NewSGen(opts SGenOpts) (*SGen, error) {
 		}
 
 		srcs = append(srcs, sgen.Source{
-			Name:            cs.GetName(),
-			DefaultRenderer: rndr,
-			Supplier:        supplier,
+			Name:      cs.GetName(),
+			Renderers: rndrs,
+			Supplier:  supplier,
 		})
 	}
 	return &SGen{
@@ -181,13 +194,47 @@ func NewSGen(opts SGenOpts) (*SGen, error) {
 	}, nil
 }
 
-func (s *SGen) Generate(out io.Writer, renderer sgen.Renderer) error {
+type generateOptions struct {
+	renderer      sgen.Renderer
+	namedRenderer string
+}
+
+func (o generateOptions) Renderer(src sgen.Source) sgen.Renderer {
+	if o.renderer != nil {
+		return o.renderer
+	}
+	if o.namedRenderer != "" {
+		if rndr, found := src.Renderers[o.namedRenderer]; found {
+			return rndr
+		}
+		// fallthrough
+	}
+	return src.Renderers["default"]
+}
+
+type GenerateOption func(*generateOptions)
+
+func WithRenderer(r sgen.Renderer) GenerateOption {
+	return func(opts *generateOptions) {
+		opts.renderer = r
+	}
+}
+
+func WithNamedRenderer(name string) GenerateOption {
+	return func(opts *generateOptions) {
+		opts.namedRenderer = name
+	}
+}
+
+func (s *SGen) Generate(out io.Writer, opts ...GenerateOption) error {
+	var options generateOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
+
 	ctx := context.Background()
 	for _, src := range s.Sources {
-		rndr := renderer
-		if rndr == nil {
-			rndr = src.DefaultRenderer
-		}
+		rndr := options.Renderer(src)
 
 		if cache, err := s.TplCache.Get(src.Name, rndr.ID()); err == nil && cache != nil {
 			// if an error happens copying the cached date into the writer we

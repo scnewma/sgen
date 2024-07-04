@@ -19,8 +19,7 @@ type Config struct {
 
 type Source interface {
 	GetName() string
-	GetNamedTemplate(name string) (string, bool)
-	GetDefaultTemplate() string
+	GetTemplates() map[string]string
 	ToSupplier() (sgen.Supplier, error)
 }
 
@@ -38,8 +37,8 @@ func (b *SourceBlock) GetNamedTemplate(name string) (string, bool) {
 	return t, ok
 }
 
-func (b *SourceBlock) GetDefaultTemplate() string {
-	return b.Templates[DefaultTemplateName]
+func (b *SourceBlock) GetTemplates() map[string]string {
+	return b.Templates
 }
 
 type FileSourceBlock struct {

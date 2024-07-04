@@ -8,9 +8,9 @@ type Supplier interface {
 }
 
 type Source struct {
-	Name            string
-	DefaultRenderer Renderer
-	Supplier        Supplier
+	Name      string
+	Supplier  Supplier
+	Renderers map[string]Renderer
 }
 
 func (s *Source) Load(ctx context.Context) ([]map[string]string, error) {
